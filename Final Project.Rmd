@@ -1,0 +1,253 @@
+---
+title: "Final Project"
+author: "Zixin Qian"
+date: "May 6, 2019"
+output: html_document
+---
+
+```{r pressure, echo=FALSE}
+library(tidyverse)
+library(rvest)
+library(dplyr)
+library(lubridate)
+library(wordcloud)
+library(RColorBrewer)
+```
+
+
+
+```{r pressure, echo=FALSE}
+#Download the data frames of all players and earnings
+url_player <- "https://liquipedia.net/dota2/Players_(all)"
+Player <- url_player %>% 
+  read_html() %>% 
+  html_nodes("table") %>% 
+  html_table(fill = TRUE)
+
+#The earning table was divided in two due to the capacity of the website
+url_earnings1 <- "https://liquipedia.net/dota2/Portal:Statistics/Player_earnings"
+Player_earnings1 <- url_earnings1 %>% 
+  read_html() %>% 
+  html_nodes("table") %>% 
+  html_table(fill = TRUE)
+url_earnings2 <- "https://liquipedia.net/dota2/Special:Ask/cl:YzqlkN1qwzAMhZ_IcZaRm4FvuhJ2VfoKaqIsZrYVJIXSt5-S0jW73cD451jfOZZde3Dt4Z1Kj7O-nRPckF1TI3CJ5VNce7Th3Wv3AWJ6gYz7k0YqkKLenuIDfSpx8BliSXDBFHyKOWpo69oTD8hhQOm9EGuYfvM0joL3ypE4gwbFPCdQNI_yFQoV9GLl_XS3rqrK-HFhnbYmGGVJKn7AEWwTTmRiJkZb5q3TNe8addrHPkLC2d4Eya5ErU_R2MsPuP-ipla4pNW0ds3xZZ07pquPRZn-7tZtvKflfy4b_w0"
+Player_earnings2 <- url_earnings2 %>% 
+  read_html() %>% 
+  html_nodes("table") %>% 
+  html_table(fill = TRUE)
+Player
+Player_earnings1
+Player_earnings2
+```
+
+
+```{r pressure, echo=FALSE}
+#The columns of nationality and link are pictures which can not be read, remove them
+Player <- Player[[1]]
+Player <- Player[,2:4]
+
+#combine the two earnings table into a new one, remove the first two columns which could not be read
+Player_earnings1 <- Player_earnings1[[1]]
+Player_earnings2 <- Player_earnings2[[1]]
+Player_earnings <- rbind(Player_earnings1,Player_earnings2)
+Player_earnings <- Player_earnings[,3:8]
+
+#column names were pictures that could not be read, replace them with words
+colnames(Player_earnings)[2:4] <- c("champion","runnerup","secondrunnerup")
+
+#join the two tables and create a new variable
+Player.processed <- Player %>% 
+  inner_join(Player_earnings,by = "ID") %>% 
+  group_by() %>% 
+  mutate(numoftop3 = champion + runnerup + secondrunnerup) 
+head(Player.processed)
+#remove "$" and "," and change data type into numerical values for Earnings
+Player.processed$Earnings <- sub('.','',Player.processed$Earnings)
+Player.processed$Earnings <- gsub(',','',Player.processed$Earnings) %>% 
+  as.numeric()
+head(Player.processed)
+```
+
+
+```{r pressure, echo=FALSE}
+#Analyzing the names
+PlayerNames <- Player.processed %>% 
+  separate(Name,c("FirstName","LastName")) %>% 
+  group_by(FirstName) %>%
+  summarize(n = n()) %>%
+  arrange(desc(n)) 
+#Find the 5 most commonly used first names among all players
+top_n(PlayerNames, n=5, n)
+#It seems 4 of the 5 names are from Chinese players, somehow indicates the large number of Chinese professional Dota 2 players
+
+```
+
+
+```{r pressure, echo=FALSE}
+#I am interested in the players with the most earnings in the world
+Topearnings <- Player.processed %>% 
+  top_n(10,Earnings) %>% 
+  print()
+#We can see that the players that have the top 10 earnings are: GH, JerAx, KuroKy, MATUMBAMAN, Mind_ContRoL, Miraclle-, N0tail, ppd, SumaiL, UNiVeRsE
+#create a word cloud of them
+Topearnings %>% with(wordcloud(ID, Earnings),scale=c(5,0.5),colors=brewer.pal("Dark2"))
+#sometimes one or two players' names could not be fit on page
+write.csv(Topearnings,"C:/Users/Kevin/Desktop/19spring/Dota2 topearnings.csv")
+
+```
+```{r pressure, echo=FALSE}
+#run a linear regresson on which team would 
+team <- lm(Earnings ~ Team + numoftop3, Player.processed) %>% 
+  summary()
+team
+team <- team$coefficients[,2] %>% 
+  tibble() %>% 
+  top_n(5)
+team
+
+```
+
+
+
+```{r pressure, echo=FALSE}
+#Now I want to find the details of their earnings from the website
+#The following are the data of these players' tournment history along with their earnings
+GH <- "https://liquipedia.net/dota2/GH/Results#Detailed_Results"
+JerAx <- "https://liquipedia.net/dota2/JerAx/Results#Detailed_Results"
+KuroKy <- "https://liquipedia.net/dota2/KuroKy/Results#Detailed_Results"
+MATUMBAMAN <- "https://liquipedia.net/dota2/MATUMBAMAN/Results#Detailed_Results"
+Mind_ContRoL <- "https://liquipedia.net/dota2/MinD_ContRoL/Results#Detailed_Results"
+Miraclle <- "https://liquipedia.net/dota2/Miracle-/Results#Detailed_Results"
+N0tail <- "https://liquipedia.net/dota2/N0tail/Results#Detailed_Results"
+ppd <- "https://liquipedia.net/dota2/Ppd/Results#Detailed_Results"
+SumaiL <- "https://liquipedia.net/dota2/SumaiL/Results#Detailed_Results"
+UNiVeRsE <- "https://liquipedia.net/dota2/UNiVeRsE/Results#Detailed_Results"
+
+#Since reading those tables would be very time consuming, I Wrote a function that returns the player's earnings details table
+ReadWeb <- function(web){
+  a <- web %>% 
+    read_html() %>% 
+    html_nodes("table") %>% 
+    html_table(fill = TRUE)
+  return(a)
+}
+TopearningPlayers <- list(GH,JerAx,KuroKy,MATUMBAMAN,Mind_ContRoL,Miraclle,N0tail,ppd,SumaiL,UNiVeRsE)
+TopearningPlayers <- TopearningPlayers %>% 
+  map(ReadWeb)
+TopearningPlayers
+#Now we get a list of 10 data frames that has player earnings details
+
+```
+
+
+```{r pressure, echo=FALSE}
+#combine the 10 data frames into a new tibble
+N <- list("GH","JerAx","KuroKy","MATUMBAMAN","Mind_ContRoL","Miraclle","N0tail","ppd","SumaiL","UNiVeRsE")
+Topearning <- NULL
+for(i in 1:10){
+Topearning <- TopearningPlayers[[i]][[1]] %>% 
+  as_tibble(.name_repair = "unique") %>% 
+  mutate(Name = N[i]) %>% 
+  rbind(Topearning)
+}
+
+Topearning <- Topearning %>% 
+  mutate(Names = Prize)
+for( i in 1:length(Topearning$Name)){
+  Topearning$Names[i] <- Topearning$Name[[i]][1]
+}
+
+#each player's data on the website is categorized by year and the titles that indicates the year of each part were also read, remove those years
+Topearning <- Topearning %>% 
+  filter(is.na(Team))
+#again, convert the variable type of earnings from character into numerics
+Topearning$Prize <- sub('.','',Topearning$Prize)
+Topearning$Prize <- gsub(',','',Topearning$Prize) %>% 
+  as.numeric()
+#The Date variable is unexpectedly repeated
+Topearning$Date <- ymd(substr(Topearning$Date,1,10))
+#remove the unreadable and useless variables
+Topearning$Team <- NULL
+Topearning$Name <- NULL
+Topearning$Results..7 <- NULL
+Topearning <- Topearning[-953,]
+Topearning
+```
+
+```{r pressure, echo=FALSE}
+#
+TotalPrize = 0
+Topearning.final <- Topearning %>% 
+  group_by() %>% 
+  arrange(Names,Date)
+#Find the cumulative sum of prizes for each player
+Topearning.final$TotalPrize <- ave(Topearning.final$Prize,Topearning.final$Names,FUN=cumsum)
+Topearning.final
+write.csv(Topearning.final,"C:/Users/Kevin/Desktop/19spring/Dota2 earnings.csv")
+#Topearning.final is the final clean data set I am dealing with, save it as a csv file
+plot <- Topearning.final %>% 
+  select(Names,TotalPrize,Date) %>% 
+  group_by(Names)
+plot
+ploted <- ggplot(plot,mapping = aes(x = Date,y = TotalPrize,color = Names))+ geom_line() + xlab("Date") + ylab("TotalPrize") + labs(colour = "Names")
+ploted
+
+
+#From the plot we can see that the cumulative prize of players are mostly 0 before 2014, that is because from The International 2013 (the most significant tournment) onward,
+#its prize pool was allowed to be crowdfunded through a type of optional in-game battle pass called the "Compendium", which raises money from players buying them and connected lootboxes to get exclusive in-game cosmetics and other bonuses offered through them.
+##From the plost, we can see ppd and UNiVeRsE have almost identical trend before mid 2016, that is because they were 
+#in the same team EG. Also, SumaiL join EG at late 2014 so that these three people share the same trend but Sumail is a little bit below
+#EG was the best team from 2015 to 2017.
+#
+#On the other hand, Team Liquid became very competitive from 2016, winning TI 2017 gave the team members huge increase in earnings
+#
+#Winning one single TI from 2015 would award the players so much that it could take up more than half of the total earnings of some good players maintianing a high level of competitiveness in a long term
+
+
+```
+```{r pressure, echo=FALSE}
+#Now let's see which tournments those players earned the most from 
+Topearning %>%
+  top_n(20,Prize) %>% 
+  print(n = 22)
+#Other than "Dota 2 Asia Championships 2015", all the top earning tournments are The Internationals from 2015 to 2018
+
+```
+```{r pressure, echo=FALSE}
+#Then I get plots of each players' earnings plot
+Topearning %>% ggplot(aes(x = Date, y = Prize, color = Names)) + geom_point() + facet_wrap(~Names)
+
+
+
+```
+```{r pressure, echo=FALSE}
+#add the upper and lower confidence bounds
+fit <- lm(Prize ~ Names + Date, data = Topearning)
+table <- predict(fit, Topearning, interval = "confidence") %>% as_tibble()
+table <- Topearning %>% mutate(lcb = table$lwr, ucb = table$upr)
+table
+table %>% ggplot(aes(x = Date, y = Prize, color = Names)) + geom_point() + geom_errorbar(aes(ymin = lcb, ymax = ucb)) + facet_wrap(~Names)
+
+```
+
+```{r pressure, echo=FALSE}
+#make a boxplot
+Boxplot <- Topearning %>% 
+  ggplot(aes(Names, Prize)) + 
+  geom_boxplot(color = 'blueviolet',fill='purple') +
+  theme(axis.text.x = element_text(angle = 45)) 
+Boxplot
+#seems very strange, remove the tournment earnings below 10000
+Boxplot<- Topearning %>% 
+  filter(Prize > 10000) %>% 
+  ggplot(aes(Names, Prize)) + 
+  geom_boxplot(color = 'blueviolet',fill='purple') +
+  theme(axis.text.x = element_text(angle = 45)) 
+
+Boxplot
+
+```
+
+```{r pressure, echo=FALSE}
+
+```
